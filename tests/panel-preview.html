@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>Panel preview</title>
+		<script src="chrome-mock.js"></script>
+		<script>
+			// Extra APIs the side panel uses, on top of chrome-mock.js.
+			Object.assign(chrome, {
+				windows: { getCurrent: async () => ({ id: 1 }) },
+				tabs: {
+					query: async () => [{ id: 7, url: 'https://news.example.com/story' }],
+					sendMessage: async () => undefined,
+					onActivated: { addListener() {} },
+					onUpdated: { addListener() {} }
+				},
+				tts: { getVoices: (cb) => cb([{ voiceName: 'Microsoft Aria', lang: 'en-US' }, { voiceName: 'Google français', lang: 'fr-FR' }]) }
+			});
+			chrome.runtime.sendMessage = async (m) => (m.type === 'tts:get' ? { state: 'playing', i: 4, n: 37 } : undefined);
+			chrome.storage.local.set({
+				'cp:settings': { fontScale: 1.5, noBg: true, theme: 'dark', noImages: false, noAds: true, paused: [], ttsRate: 1.2, ttsVoice: '' },
+				'cp:site:news.example.com': { rules: [{ id: 'a', prompt: 'Hide popups and cookie banners', css: '.cookie{display:none}' }] }
+			});
+			// Load the real side panel markup, styles and script.
+			const xhr = new XMLHttpRequest();
+			xhr.open('GET', '../extension/sidepanel.html', false);
+			xhr.send();
+			const doc = new DOMParser().parseFromString(xhr.responseText, 'text/html');
+			document.addEventListener('DOMContentLoaded', async () => {
+				document.documentElement.style.width = new URLSearchParams(location.search).get('w') || '';
+				document.body.innerHTML = doc.body.innerHTML.replaceAll('icons/', '../extension/icons/');
+				const link = Object.assign(document.createElement('link'), { rel: 'stylesheet', href: '../extension/sidepanel.css' });
+				document.head.append(link);
+				if (location.search.includes('notransition')) document.head.insertAdjacentHTML('beforeend', '<style>*,*::after{transition:none!important}</style>');
+				await import('../extension/sidepanel.js');
+				// Show a sample conversation.
+				const log = document.getElementById('log');
+				log.insertAdjacentHTML(
+					'beforeend',
+					'<p class="msg user">Hide popups and cookie banners</p><p class="msg bot">I hid the cookie banner at the bottom of the page.<span class="meta">Claude Haiku 5.5 · 1,912 tokens · $0.0003 <button>Undo</button></span></p>'
+				);
+			});
+		</script>
+	</head>
+	<body></body>
+</html>

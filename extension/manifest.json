@@ -1,0 +1,67 @@
+{
+  "manifest_version": 3,
+  "name": "ClearPage",
+  "version": "1.0.0",
+  "description": "Make any page easier to read: bigger text, plain backgrounds, no images or ads, read aloud, and an AI chat for custom changes.",
+  "minimum_chrome_version": "133",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Open ClearPage",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_start"
+    }
+  ],
+  "permissions": ["storage", "sidePanel", "tts", "contextMenus", "scripting", "declarativeNetRequest"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ads",
+        "enabled": false,
+        "path": "rules/ads.json"
+      }
+    ]
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+Shift+C" },
+      "description": "Open the ClearPage panel"
+    },
+    "read-aloud": {
+      "suggested_key": { "default": "Alt+Shift+R" },
+      "description": "Read aloud: start, pause or resume"
+    },
+    "text-bigger": {
+      "suggested_key": { "default": "Alt+Shift+Up" },
+      "description": "Make text bigger"
+    },
+    "text-smaller": {
+      "suggested_key": { "default": "Alt+Shift+Down" },
+      "description": "Make text smaller"
+    },
+    "stop-reading": {
+      "description": "Stop reading aloud"
+    }
+  }
+}

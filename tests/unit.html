@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>running</title>
+	</head>
+	<body>
+		<pre id="results"></pre>
+		<script type="module">
+			import { parseIntent } from '../extension/lib/intents.js';
+			import { hardenCss, unsafeReason } from '../extension/lib/css-safety.js';
+			import { parseResult, costOf, buildUserMessage, SYSTEM_PROMPT, RESPONSE_SCHEMA } from '../extension/lib/ai.js';
+
+			const results = [];
+			let failed = 0;
+			const check = (name, ok, detail = '') => {
+				results.push(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok ? '' : ' -> ' + detail}`);
+				if (!ok) failed++;
+			};
+			const j = JSON.stringify;
+
+			// ---- local intents: common requests handled for free
+			const local = {
+				'make the text bigger please': { fontDelta: 0.25 },
+				'Bigger text!': { fontDelta: 0.25 },
+				'can you make the font smaller': { fontDelta: -0.25 },
+				'dark mode': { settings: { noBg: true, theme: 'dark' } },
+				'turn on dark mode': { settings: { noBg: true, theme: 'dark' } },
+				'high contrast': { settings: { noBg: true, theme: 'contrast' } },
+				'remove the background': { settings: { noBg: true } },
+				'hide images': { settings: { noImages: true } },
+				'turn off pictures': { settings: { noImages: true } },
+				'show images again': null, // "again" isn't a known word -> AI (acceptable)
+				'show images': { settings: { noImages: false } },
+				'get rid of the ads': { settings: { noAds: true } },
+				'block ads': { settings: { noAds: true } },
+				'read this page to me': { action: 'read' },
+				'read it out loud': { action: 'read' },
+				'stop': { action: 'stop' },
+				'undo that': { action: 'undo' },
+				'undo all': { action: 'clear' }
+			};
+			for (const [text, want] of Object.entries(local)) {
+				const got = parseIntent(text);
+				const ok = want === null ? got === null : got && Object.entries(want).every(([k, v]) => j(got[k]) === j(v));
+				check(`intent "${text}"`, ok, j(got));
+			}
+			// Specific requests must go to the AI, not be swallowed by a local rule.
+			for (const text of ['hide the images in the sidebar', 'make the headings bigger', 'remove the cookie banner', 'read the comments section', 'what is this page about?']) {
+				check(`goes to AI: "${text}"`, parseIntent(text) === null, j(parseIntent(text)));
+			}
+
+			// ---- CSS safety
+			const blocked = [
+				'a{background:url(https://evil.example/x)}',
+				'@import "https://evil.example/a.css";',
+				'input[value^="a"]{background-image:image-set("https://e/a" 1x)}',
+				'a{background:u\\72 l(https://e)}',
+				'a{background:\\u\\r\\l(https://e)}',
+				'@font-face{font-family:x;src:local(x)}',
+				'</style><script>alert(1)<\/script>'
+			];
+			for (const c of blocked) {
+				let threw = false;
+				try { hardenCss(c); } catch { threw = true; }
+				check(`blocks ${c.slice(0, 40)}`, threw);
+			}
+			check('allows tailwind punctuation escapes', unsafeReason('.md\\:flex{display:none}') === '');
+			const h = hardenCss('aside.sidebar{display:none}\n@media (max-width:600px){h1{font-size:2em;color:red}}\nbody::before{content:"Call 555-0100 now"}\n.x{content:""}\n%%% {{{ broken');
+			check('adds !important', h.css.includes('display: none !important'), h.css);
+			check('keeps @media and importantises inside', /@media[^{]+\{\s*h1 \{ font-size: 2em !important; color: red !important; \}/.test(h.css), h.css);
+			check('strips content strings', !h.css.includes('555') && h.dropped === 1, h.css);
+			check('keeps empty content', h.css.includes('content: "" !important'), h.css);
+			check('collects selectors', j(h.selectors) === j(['aside.sidebar', 'h1', 'body::before', '.x']), j(h.selectors));
+
+			// ---- AI response handling
+			const r = parseResult('{"reply":"Hid it.","css":"aside{display:none}","replaceExisting":false,"settings":{"fontScale":null,"removeBackgrounds":true,"theme":null,"removeImages":null,"removeAds":null},"read":""}');
+			check('parses structured result', r.reply === 'Hid it.' && r.settings.removeBackgrounds === true && r.settings.fontScale === null, j(r));
+			const r2 = parseResult('Sure! {"reply":"ok","css":""} hope that helps');
+			check('tolerates text around JSON', r2.reply === 'ok' && r2.settings.theme === null, j(r2));
+			let threw = false;
+			try { parseResult('no json here'); } catch { threw = true; }
+			check('rejects non-JSON', threw);
+
+			const cost = costOf('claude-haiku-5-5', { input_tokens: 2000, cache_read_input_tokens: 800, cache_creation_input_tokens: 0, output_tokens: 150 });
+			check('haiku cost per typical request', Math.abs(cost - (2000 * 0.1 + 80 * 0.1 + 150 * 0.5) / 1e6) < 1e-12, cost);
+			results.push(`     typical request ≈ $${cost.toFixed(5)} (${Math.round(1 / cost)} requests per dollar)`);
+
+			const msg = buildUserMessage({ page: { url: 'https://x.test/', title: 'T', viewport: '1000x800', outline: 'main#a' }, currentCss: '', request: 'hide it' });
+			check('user message has page + request', msg.includes('main#a') && msg.endsWith('REQUEST: hide it'), msg);
+			// Haiku 5.5 only caches prompts of 512+ tokens; ~4 chars per token.
+			check('system prompt long enough to be cached', SYSTEM_PROMPT.length / 4 > 600, SYSTEM_PROMPT.length);
+			const allObjectsClosed = (s) => s.type !== 'object' || (s.additionalProperties === false && Object.values(s.properties).every(allObjectsClosed));
+			check('schema valid for structured outputs', allObjectsClosed(RESPONSE_SCHEMA));
+
+			document.getElementById('results').textContent = results.join('\n');
+			document.title = failed ? `FAIL ${failed}` : `PASS ${results.filter((x) => x.startsWith('ok')).length}`;
+		</script>
+	</body>
+</html>

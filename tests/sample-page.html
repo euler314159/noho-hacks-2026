@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>Sample News Article</title>
+		<script src="chrome-mock.js"></script>
+		<link rel="stylesheet" href="../extension/content.css" />
+		<script src="../extension/content.js"></script>
+		<style>
+			body { margin: 0; font: 14px/20px Georgia, serif; background: linear-gradient(#fde2e4, #cde7f0); color: #333; }
+			.site-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; background: #20232a; color: #fff; position: sticky; top: 0; }
+			.site-header a { color: #9cf; margin-left: 12px; font-size: 13px; }
+			.layout { display: flex; gap: 20px; padding: 20px; }
+			#story { flex: 1; background: rgba(255,255,255,.7); padding: 16px; }
+			#story h1 { font-size: 28px; line-height: 34px; margin-top: 0; }
+			.byline { color: #888; font-size: 12px; }
+			.sidebar { width: 220px; background: #ffe9a8; padding: 12px; font-size: 13px; }
+			.ad-slot, .ad { background: repeating-linear-gradient(45deg,#f39,#f39 10px,#fc0 10px,#fc0 20px); color:#fff; font: bold 16px sans-serif; text-align:center; padding: 30px 0; margin: 10px 0; }
+			img.hero { width: 100%; height: 160px; object-fit: cover; display: block; background: #789; }
+			.cookie-banner { position: fixed; left: 0; right: 0; bottom: 0; background: #222; color: #fff; padding: 12px 20px; }
+			.comments { margin-top: 20px; border-top: 1px solid #ccc; }
+		</style>
+	</head>
+	<body>
+		<header class="site-header">
+			<strong>Daily Example</strong>
+			<nav aria-label="Main"><a href="#">World</a><a href="#">Science</a><a href="#">Sport</a></nav>
+		</header>
+		<div class="layout">
+			<main id="story">
+				<article>
+					<h1>Volunteers restore the old riverside library</h1>
+					<p class="byline">By Sam Rivera · 4 min read</p>
+					<img class="hero" alt="Volunteers carrying boxes of books into a brick building" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3Crect width='10' height='10' fill='%23468'/%3E%3C/svg%3E" />
+					<p>After three years of fundraising, more than two hundred volunteers spent the weekend repairing shelves, painting walls and sorting donated books. The library first opened in 1912 and closed in 2019 when the roof began to leak.</p>
+					<div class="ad-slot">ADVERTISEMENT</div>
+					<p>“It feels like the whole town showed up,” said the head librarian. Organisers say the reading room will reopen to the public next month, with a new section for large-print and audio books. Accessibility was a priority: the entrance now has a ramp, and every floor is reachable by lift. Local schools have already booked weekly visits, and a reading club for older residents will meet on Tuesday mornings.</p>
+					<h2>What happens next</h2>
+					<ul>
+						<li>Electrical work finishes in two weeks.</li>
+						<li>The <em>children’s corner</em> opens in spring.</li>
+					</ul>
+				</article>
+				<section class="comments"><h2>Comments</h2><p>Great news for the town!</p><p>I volunteered on Saturday. Lovely people.</p></section>
+			</main>
+			<aside class="sidebar">
+				<h3>Most read</h3>
+				<p>Council approves new cycle lanes</p>
+				<div class="ad">BUY NOW</div>
+				<p>Weather: sunny spells</p>
+			</aside>
+		</div>
+		<div class="cookie-banner" role="dialog">We use cookies to improve your experience. <button>Accept</button></div>
+		<p id="late-target"></p>
+		<pre id="results"></pre>
+		<script src="content-tests.js"></script>
+		<script>
+			// Simulates content that arrives after load (infinite scroll, SPAs).
+			setTimeout(() => {
+				document.getElementById('late-target').innerHTML = '<span class="late">Late-loaded paragraph text.</span>';
+			}, 100);
+		</script>
+	</body>
+</html>

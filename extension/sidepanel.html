@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>ClearPage</title>
+		<link rel="stylesheet" href="sidepanel.css" />
+		<script type="module" src="sidepanel.js"></script>
+	</head>
+	<body>
+		<header class="top">
+			<div class="brand">
+				<img src="icons/icon32.png" alt="" width="24" height="24" />
+				<h1>ClearPage</h1>
+			</div>
+			<p id="site" class="site" aria-live="polite">Loading…</p>
+			<label class="switch" id="pause-wrap">
+				<input type="checkbox" id="pause" role="switch" />
+				<span>Turn off on this site</span>
+			</label>
+		</header>
+
+		<p id="unsupported" class="notice" hidden>ClearPage can't change this kind of page (browser settings, the Web Store, or a file). Open a normal website.</p>
+
+		<main id="controls">
+			<section aria-labelledby="h-view">
+				<h2 id="h-view">Page view</h2>
+
+				<div class="row text-size">
+					<span id="fs-label" class="label">Text size</span>
+					<button type="button" id="fs-down" class="icon-btn" aria-label="Make text smaller">A−</button>
+					<input type="range" id="fs" min="100" max="300" step="10" value="100" aria-labelledby="fs-label" aria-valuetext="100%" />
+					<button type="button" id="fs-up" class="icon-btn" aria-label="Make text bigger">A+</button>
+					<output id="fs-value" for="fs">100%</output>
+				</div>
+
+				<div class="toggles">
+					<button type="button" class="toggle" data-setting="noBg" aria-pressed="false">
+						<span class="dot" aria-hidden="true"></span>Remove backgrounds
+					</button>
+					<button type="button" class="toggle" data-setting="noImages" aria-pressed="false">
+						<span class="dot" aria-hidden="true"></span>Remove images
+					</button>
+					<button type="button" class="toggle" data-setting="noAds" aria-pressed="false">
+						<span class="dot" aria-hidden="true"></span>Remove ads
+					</button>
+				</div>
+
+				<fieldset class="themes">
+					<legend>Reading colours</legend>
+					<label class="theme t-light"><input type="radio" name="theme" value="light" /><span>Light</span></label>
+					<label class="theme t-dark"><input type="radio" name="theme" value="dark" /><span>Dark</span></label>
+					<label class="theme t-sepia"><input type="radio" name="theme" value="sepia" /><span>Sepia</span></label>
+					<label class="theme t-contrast"><input type="radio" name="theme" value="contrast" /><span>High contrast</span></label>
+				</fieldset>
+			</section>
+
+			<section aria-labelledby="h-read">
+				<h2 id="h-read">Read aloud</h2>
+				<div class="row player">
+					<button type="button" id="tts-prev" class="icon-btn" aria-label="Previous sentence" disabled>⏮</button>
+					<button type="button" id="tts-play" class="primary play">▶ Read page</button>
+					<button type="button" id="tts-next" class="icon-btn" aria-label="Next sentence" disabled>⏭</button>
+					<button type="button" id="tts-stop" class="icon-btn" aria-label="Stop reading" disabled>■</button>
+				</div>
+				<p id="tts-status" class="hint" aria-live="polite">Select text first to read only that part.</p>
+				<div class="row">
+					<label for="rate" class="label">Speed</label>
+					<input type="range" id="rate" min="0.5" max="2.5" step="0.1" value="1" />
+					<output id="rate-value" for="rate">1.0×</output>
+				</div>
+				<div class="row">
+					<label for="voice" class="label">Voice</label>
+					<select id="voice"><option value="">Default for the page language</option></select>
+				</div>
+				<p class="hint">Shortcuts: <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> read/pause, <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> text size.</p>
+			</section>
+
+			<section aria-labelledby="h-chat" class="chat">
+				<h2 id="h-chat">Ask for a change</h2>
+				<div id="log" class="log" role="log" aria-live="polite" aria-relevant="additions">
+					<p class="msg bot">Tell me what to change, like <em>“hide the comments”</em> or <em>“make the menu bigger”</em>. Simple requests are free and instant.</p>
+				</div>
+				<div class="chips" aria-label="Suggestions">
+					<button type="button" class="chip">Hide popups and cookie banners</button>
+					<button type="button" class="chip">Hide the sidebar</button>
+					<button type="button" class="chip">Make links bigger and underlined</button>
+					<button type="button" class="chip">Dark mode</button>
+				</div>
+				<div id="picked" class="picked" hidden>
+					<span>Selected: <code id="picked-name"></code></span>
+					<button type="button" id="picked-clear" class="link-btn" aria-label="Clear selected element">✕</button>
+				</div>
+				<form id="chat-form" class="composer">
+					<label for="chat-input" class="sr-only">Describe the change you want</label>
+					<textarea id="chat-input" rows="2" placeholder="Describe a change…" required></textarea>
+					<div class="row composer-actions">
+						<button type="button" id="pick" class="secondary" title="Click an element on the page to change it">🎯 Pick element</button>
+						<button type="submit" id="send" class="primary">Send</button>
+					</div>
+				</form>
+			</section>
+
+			<section aria-labelledby="h-rules">
+				<h2 id="h-rules">Saved changes for this site</h2>
+				<ul id="rules" class="rules"></ul>
+				<p id="rules-empty" class="hint">None yet. Changes you make in the chat are saved here and reapplied automatically, with no extra AI cost.</p>
+				<button type="button" id="rules-clear" class="secondary" hidden>Remove all</button>
+			</section>
+		</main>
+
+		<details class="settings" id="settings">
+			<summary>Settings &amp; AI</summary>
+			<div class="field">
+				<label for="provider">AI for the chat</label>
+				<select id="provider">
+					<option value="auto">Automatic (Claude if a key is set, otherwise Chrome's built-in AI)</option>
+					<option value="claude">Claude (needs an API key)</option>
+					<option value="builtin">Chrome built-in AI (free, on this device)</option>
+				</select>
+				<p id="builtin-status" class="hint"></p>
+			</div>
+			<div class="field">
+				<label for="api-key">Claude API key</label>
+				<input type="password" id="api-key" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" />
+				<p class="hint">Stored only in this browser. Get one at console.anthropic.com.</p>
+			</div>
+			<div class="field">
+				<label for="model">Claude model</label>
+				<select id="model"></select>
+			</div>
+			<label class="check"><input type="checkbox" id="speak-replies" /> Speak chat replies aloud</label>
+			<p id="spend" class="hint"></p>
+		</details>
+	</body>
+</html>
